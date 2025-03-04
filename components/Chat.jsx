@@ -150,7 +150,7 @@ const Chat = () => {
             }`}
           >
             <div
-              className={`rounded-lg p-3 max-w-xs break-words ${
+              className={`rounded-lg p-3 max-w-lg break-words ${
                 msg.sender === "user"
                   ? "bg-blue-500"
                   : msg.isFinal
