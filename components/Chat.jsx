@@ -170,7 +170,7 @@ const Chat = () => {
         {/* Streaming bubble: shows live accumulated text on the same line */}
         {streamingText && (
           <div className="mb-4 flex justify-start">
-            <div className="rounded-lg p-3 max-w-xs break-words bg-gray-700">
+            <div className="rounded-lg p-3 max-w-lg break-words bg-gray-700">
               <ReactMarkdown>{streamingText}</ReactMarkdown>
             </div>
           </div>
