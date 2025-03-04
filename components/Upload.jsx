@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ShootingStars } from "./ui/shooting-stars";
 import { StarsBackground } from "./ui/stars-background";
-import createApiCall, { POST } from "../components/api/api";
 import { toast } from "react-toastify";
 
 const Upload = () => {
@@ -11,7 +10,16 @@ const Upload = () => {
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
 
-  const FileUploadAPI = createApiCall("upload", POST);
+  const FileUploadAPI = (data) =>
+    fetch("http://16.171.197.51:8000/upload", {
+      method: "POST",
+      body: data.body,
+    }).then(async (response) => {
+      if (!response.ok) {
+        throw response;
+      }
+      return response.json();
+    });
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0]; // Only allow one file
@@ -36,6 +44,7 @@ const Upload = () => {
   };
 
   const handleUpload = () => {
+    console.log("clicked");
     if (!file) {
       setError("No file selected.");
       return;

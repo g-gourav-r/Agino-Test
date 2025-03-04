@@ -7,121 +7,111 @@ const Chat = () => {
   const navigate = useNavigate();
   const [message, setMessage] = useState("");
   const [sessionId, setSessionId] = useState(""); // Optional session id state
-  const [messages, setMessages] = useState([]); // Conversation history
+  const [messages, setMessages] = useState([]); // Conversation history (each message is a bubble)
+  const [streamingText, setStreamingText] = useState(""); // For accumulating streaming data
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // Scroll to the latest message
+  // Auto-scroll when messages or streamingText change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, streamingText]);
 
-  const handleSendMessage = async () => {
-    const redisKey = localStorage.getItem("redis_key");
-    if (!redisKey) {
-      toast.error("Redis key not found. Please upload a file first.");
-      navigate("/");
-      return;
-    }
-    if (!message.trim()) {
+  const handleSendMessage = async (userInput) => {
+    if (!userInput.trim()) {
       toast.error("Please enter a message.");
       return;
     }
 
-    // Append the user's message to the chat
-    const userMessage = { sender: "user", content: message };
-    setMessages((prev) => [...prev, userMessage]);
+    // Append user's message to conversation
+    const userMsg = { sender: "user", content: userInput };
+    setMessages((prev) => [...prev, userMsg]);
 
+    // Start the streaming bubble (for live updates)
+    setStreamingText("Thinking...");
     setLoading(true);
-    setMessage(""); // Clear the input
-
-    const payload = new FormData();
-    payload.append("redis_key", redisKey);
-    payload.append("message", message);
-    if (sessionId) {
-      payload.append("session_id", sessionId);
-    }
+    setMessage(""); // Clear input
 
     try {
-      const response = await fetch("https://zingapi.agino.tech/chat", {
+      // Build FormData payload with redis_key, message, and session_id if available
+      const payload = new FormData();
+      const redisKey = localStorage.getItem("redis_key");
+      payload.append("redis_key", redisKey);
+      payload.append("message", userInput);
+      if (sessionId) {
+        payload.append("session_id", sessionId);
+      }
+
+      const response = await fetch("http://16.171.197.51:8000/chat", {
         method: "POST",
         body: payload,
       });
+      if (!response.body) throw new Error("No response body");
 
-      if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`);
-      }
-
-      // Create a reader to process the streaming response
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
-      let done = false;
+
       let accumulatedText = "";
+      let isFinalResponse = false;
+      let newSessionId = sessionId; // Use existing session id unless updated
 
-      // Add a placeholder for the bot's response
-      setMessages((prev) => [...prev, { sender: "bot", content: "" }]);
+      while (!isFinalResponse) {
+        const { value, done } = await reader.read();
+        if (done) break;
 
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
+        // Decode and clean chunk: remove "data:" and newlines
         const chunk = decoder.decode(value, { stream: true });
-
-        // Remove all "data:" tokens and extra whitespace
-        const cleanedChunk = chunk.replace(/data:\s*/g, "");
+        const cleanedChunk = chunk.replace(/data:\s*/g, "").replace(/\n/g, " ");
         accumulatedText += cleanedChunk;
 
-        // Check if the final marker "FINAL_ANSWER" is present
+        // Update the streaming bubble with accumulating text on the same line
+        setStreamingText(accumulatedText);
+
+        // Check if FINAL_ANSWER marker is present
         if (accumulatedText.includes("FINAL_ANSWER")) {
-          // Split the accumulated text at the marker
-          const [_, afterMarker] = accumulatedText.split("FINAL_ANSWER");
+          // Split the text at the marker
+          let [streamingPart, jsonPart] = accumulatedText.split("FINAL_ANSWER");
+          streamingPart = streamingPart.trim();
+          // Update the streaming bubble to show only text before FINAL_ANSWER
+          setStreamingText(streamingPart);
+
           try {
-            // Parse the JSON part that comes after the marker
-            const finalData = JSON.parse(afterMarker.trim());
-            if (finalData.session_id) {
-              setSessionId(finalData.session_id);
-            }
-            // Update the bot's message with only the "final_response"
-            setMessages((prev) => {
-              const updated = [...prev];
-              if (
-                updated.length &&
-                updated[updated.length - 1].sender === "bot"
-              ) {
-                updated[updated.length - 1].content =
-                  finalData.final_response || "";
-              }
-              return updated;
-            });
-            console.log("Final JSON data:", finalData);
+            const finalData = JSON.parse(jsonPart.trim());
+            // Append a new bubble for the final answer with a different background
+            setMessages((prev) => [
+              ...prev,
+              {
+                sender: "bot",
+                content: finalData.final_response,
+                isFinal: true,
+              },
+            ]);
+            isFinalResponse = true; // Stop reading further
           } catch (e) {
-            console.error("Error parsing final JSON:", e);
+            // JSON might be incomplete, continue accumulating
+            console.log("Incomplete JSON, continuing accumulation...", e);
           }
-          break;
-        } else {
-          // Incrementally update the bot's message with the streamed content
-          setMessages((prev) => {
-            const updated = [...prev];
-            if (
-              updated.length &&
-              updated[updated.length - 1].sender === "bot"
-            ) {
-              updated[updated.length - 1].content = accumulatedText;
-            }
-            return updated;
-          });
         }
       }
 
+      // Update session id state if new one was extracted
+      setSessionId(newSessionId);
       setLoading(false);
-    } catch (err) {
+    } catch (error) {
+      console.error("Error:", error);
+      setMessages((prev) => [
+        ...prev,
+        { sender: "bot", content: "Error occurred." },
+      ]);
+      setStreamingText("");
       setLoading(false);
-      toast.error(`Chat failed: ${err.message}`, { autoClose: 3000 });
+      toast.error(`Chat failed: ${error.message}`, { autoClose: 3000 });
     }
   };
 
   return (
     <div className="w-screen h-screen flex flex-col bg-neutral-900 text-white">
-      {/* Fixed-top section with Redis key and buttons in one line */}
+      {/* Fixed-top section with Redis key and navigation buttons */}
       <div className="fixed-top bg-slate-800 p-3">
         <div className="flex items-center justify-between">
           <div>Redis Key: {localStorage.getItem("redis_key")}</div>
@@ -161,7 +151,11 @@ const Chat = () => {
           >
             <div
               className={`rounded-lg p-3 max-w-xs break-words ${
-                msg.sender === "user" ? "bg-blue-500" : "bg-gray-700"
+                msg.sender === "user"
+                  ? "bg-blue-500"
+                  : msg.isFinal
+                  ? "bg-green-500"
+                  : "bg-gray-700"
               }`}
             >
               {msg.sender === "bot" ? (
@@ -172,6 +166,16 @@ const Chat = () => {
             </div>
           </div>
         ))}
+
+        {/* Streaming bubble: shows live accumulated text on the same line */}
+        {streamingText && (
+          <div className="mb-4 flex justify-start">
+            <div className="rounded-lg p-3 max-w-xs break-words bg-gray-700">
+              <ReactMarkdown>{streamingText}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -186,7 +190,7 @@ const Chat = () => {
             rows="2"
           />
           <button
-            onClick={handleSendMessage}
+            onClick={() => handleSendMessage(message)}
             disabled={loading}
             className="px-4 py-2 rounded-r-lg bg-[#1ED760] font-bold text-white tracking-widest uppercase hover:bg-[#21e065] transition duration-200 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
@@ -194,6 +198,9 @@ const Chat = () => {
           </button>
         </div>
       </div>
+      {/* Uncomment below if you have ShootingStars and StarsBackground components */}
+      {/* <ShootingStars minDelay={1000} maxDelay={3000} />
+      <StarsBackground /> */}
     </div>
   );
 };
