@@ -6,7 +6,7 @@ export const DELETE = "delete";
 const createApiCall =
   (url, method) =>
   (params = {}) => {
-    let apiEndpoint = "http://16.171.197.51:8000" + url;
+    let apiEndpoint = "https://zingapi.agino.tech" + url;
     const { body, urlParams, pathVariables, headers = {} } = params;
 
     // Handle URL parameters

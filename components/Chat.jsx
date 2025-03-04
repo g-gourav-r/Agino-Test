@@ -42,7 +42,7 @@ const Chat = () => {
         payload.append("session_id", sessionId);
       }
 
-      const response = await fetch("http://16.171.197.51:8000/chat", {
+      const response = await fetch("https://zingapi.agino.tech/chat", {
         method: "POST",
         body: payload,
       });
@@ -78,14 +78,21 @@ const Chat = () => {
           try {
             const finalData = JSON.parse(jsonPart.trim());
             // Append a new bubble for the final answer with a different background
-            setMessages((prev) => [
-              ...prev,
-              {
-                sender: "bot",
-                content: finalData.final_response,
-                isFinal: true,
-              },
-            ]);
+            setMessages((prev) => {
+              // Remove the temporary streaming message before appending final response
+              const filteredMessages = prev.filter(
+                (msg) => msg.sender !== "bot" || msg.isFinal
+              );
+              return [
+                ...filteredMessages,
+                {
+                  sender: "bot",
+                  content: finalData.final_response,
+                  isFinal: true,
+                },
+              ];
+            });
+
             isFinalResponse = true; // Stop reading further
           } catch (e) {
             // JSON might be incomplete, continue accumulating

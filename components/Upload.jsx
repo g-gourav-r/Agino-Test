@@ -11,7 +11,7 @@ const Upload = () => {
   const [uploading, setUploading] = useState(false);
 
   const FileUploadAPI = (data) =>
-    fetch("http://16.171.197.51:8000/upload", {
+    fetch("https://zingapi.agino.tech/upload", {
       method: "POST",
       body: data.body,
     }).then(async (response) => {
